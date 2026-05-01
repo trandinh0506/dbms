@@ -31,31 +31,6 @@ func (ctrl *Controller) GetMyCourses(c *gin.Context) {
 		"courses":       courses,
 	})
 }
-func (ctrl *Controller) UpdateStudentMark(c *gin.Context) {
-	role := c.MustGet("role").(string)
-	if role != "Instructor" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Chỉ giảng viên mới có quyền sửa điểm"})
-		return
-	}
-
-	mode := c.DefaultQuery("mode", "safe")
-	sID, _ := strconv.Atoi(c.Query("sid"))
-	cID, _ := strconv.Atoi(c.Query("cid"))
-	mark, _ := strconv.ParseFloat(c.Query("mark"), 64)
-
-	var err error
-	if mode == "safe" || mode == "unsafe" {
-		err = ctrl.Svc.UpdateMark(sID, cID, mark, mode)
-	} else {
-		err = ctrl.Svc.UpdateMarkBuggy(sID, cID, mark)
-	}
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "Cập nhật thành công", "mode": mode})
-}
 
 func (ctrl *Controller) CreateCourse(c *gin.Context) {
 	role, _ := c.Get("role")

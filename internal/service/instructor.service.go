@@ -1,35 +1,10 @@
 package service
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/gin-gonic/gin"
 )
-
-func (s *Service) UpdateMark(sID, cID int, newMark float64, mode string) error {
-	ctx := context.Background()
-
-	if mode == "safe" {
-		return s.Repo.CallUpdateMarkSafe(ctx, sID, cID, newMark)
-	}
-
-	return s.Repo.CallUpdateMarkUnsafe(ctx, sID, cID, newMark)
-}
-
-func (s *Service) UpdateMarkBuggy(sID, cID int, newMark float64) error {
-	tx, _ := s.Repo.DB.Begin()
-
-	_, _ = s.Repo.GetMark(context.Background(), tx, sID, cID)
-
-	err := s.Repo.UpdateMark(context.Background(), tx, sID, cID, newMark)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
-	return tx.Commit()
-}
 
 func (s *Service) ProcessFinalReport(courseID int, isSafe bool) (string, []gin.H, error) {
 	const procedureName = "FinalizeAcademicReport"
