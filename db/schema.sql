@@ -56,7 +56,7 @@ LEFT JOIN COURSE_INSTRUCTOR ci ON c.id = ci.course_id
 LEFT JOIN INSTRUCTOR i ON ci.instructor_id = i.id
 LEFT JOIN ENROLLMENT e ON c.id = e.course_id
 GROUP BY c.id, c.name;
-GO
+
 
 -- 4. TẠO FUNCTION
 CREATE FUNCTION dbo.fn_GetStudentGPA (@studentId INT)
@@ -64,10 +64,9 @@ RETURNS DECIMAL(4,2) AS
 BEGIN
     RETURN (SELECT ISNULL(AVG(mark), 0) FROM ENROLLMENT WHERE student_id = @studentId);
 END;
-GO
+
 
 -- 5. TẠO PROCEDURE
-
 CREATE OR ALTER PROCEDURE RegisterAccount 
     @username NVARCHAR(50), 
     @password_hash NVARCHAR(255),
@@ -87,9 +86,11 @@ BEGIN
     SELECT @new_id AS GeneratedID;
 END;
 
+-- dữ liệu rác
+-- dirty read
 CREATE OR ALTER PROCEDURE GetStudentGradesSafe
     @SID INT
-AS
+ASread
 BEGIN
     SET NOCOUNT ON;
     SET LOCK_TIMEOUT 100;
@@ -143,6 +144,79 @@ END;
 
 --------
 
+-- non-repeatable read
+-- không đọc lại được dữ liệu trong cùng 1 transaction nếu có 1 transaction khác đã update dữ liệu đó
+
+CREATE OR ALTER PROCEDURE FinalizeAcademicReport
+    @CourseID INT,
+    @IsSafe BIT 
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF @IsSafe = 1 
+        SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    ELSE 
+        SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED; 
+
+    BEGIN TRANSACTION;
+    BEGIN TRY
+        SELECT student_id, mark 
+        FROM ENROLLMENT 
+        WHERE course_id = @CourseID;
+
+        WAITFOR DELAY '00:00:20';
+
+        SELECT student_id, mark 
+        FROM ENROLLMENT 
+        WHERE course_id = @CourseID;
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK;
+        THROW;
+    END CATCH
+END;
+
+----------
+
+
+-- phantom read
+-- xuất hiện hoặc mất đi một/nhiều dòng dữ liệu trong cùng 1 transaction nếu có 1 transaction khác đã insert hoặc delete dữ liệu đó
+CREATE OR ALTER PROCEDURE StatWeakStudentsReport
+    @CourseID INT,
+    @IsSafe BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @IsSafe = 1 
+        SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+    ELSE 
+        SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+
+    BEGIN TRANSACTION;
+    BEGIN TRY
+        SELECT student_id, mark 
+        FROM ENROLLMENT 
+        WHERE course_id = @CourseID AND mark < 5;
+
+        WAITFOR DELAY '00:00:20';
+
+        SELECT student_id, mark 
+        FROM ENROLLMENT 
+        WHERE course_id = @CourseID AND mark < 5;
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK;
+        THROW;
+    END CATCH
+END;
+
+----
+
 CREATE OR ALTER PROCEDURE EnrollStudent
     @StudentID INT,
     @CourseID INT
@@ -187,72 +261,6 @@ BEGIN
 END;
 
 --------
-
-CREATE OR ALTER PROCEDURE FinalizeAcademicReport
-    @CourseID INT,
-    @IsSafe BIT 
-AS
-BEGIN
-    SET NOCOUNT ON;
-    IF @IsSafe = 1 
-        SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
-    ELSE 
-        SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED; 
-
-    BEGIN TRANSACTION;
-    BEGIN TRY
-        SELECT student_id, mark 
-        FROM ENROLLMENT 
-        WHERE course_id = @CourseID;
-
-        WAITFOR DELAY '00:00:20';
-
-        SELECT student_id, mark 
-        FROM ENROLLMENT 
-        WHERE course_id = @CourseID;
-
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK;
-        THROW;
-    END CATCH
-END;
-
-----------
-
-CREATE OR ALTER PROCEDURE StatWeakStudentsReport
-    @CourseID INT,
-    @IsSafe BIT
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF @IsSafe = 1 
-        SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-    ELSE 
-        SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-
-    BEGIN TRANSACTION;
-    BEGIN TRY
-        SELECT student_id, mark 
-        FROM ENROLLMENT 
-        WHERE course_id = @CourseID AND mark < 5;
-
-        WAITFOR DELAY '00:00:20';
-
-        SELECT student_id, mark 
-        FROM ENROLLMENT 
-        WHERE course_id = @CourseID AND mark < 5;
-
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK;
-        THROW;
-    END CATCH
-END;
-
 
 
 -- 6. TẠO TRIGGER
