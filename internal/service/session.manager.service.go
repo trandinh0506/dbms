@@ -3,6 +3,7 @@ package service
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -36,7 +37,7 @@ func (sm *SessionManager) StartSession(db *sql.DB) (string, error) {
 	sm.mu.Unlock()
 
 	go func() {
-		time.Sleep(5 * time.Minute)
+		time.Sleep(15 * time.Minute)
 		sm.CloseSession(sessionID, "ROLLBACK")
 	}()
 
@@ -59,10 +60,39 @@ func (sm *SessionManager) UpdateDraft(sessionID string, sid, cid int, mark float
 	_, err := tx.Exec(query, mark, sid, cid)
 	if err != nil {
 		if isLockTimeoutError(err) {
-			return errors.New("Hệ thống đang bận: Có giảng viên khác đang chốt báo cáo lớp này. Vui lòng đợi trong giây lát!")
+			return errors.New("Hệ thống đang bận: Vui lòng đợi trong giây lát!")
+		}
+		if isDeadlockError(err) {
+			return errors.New("Đã xảy ra deadlock: Vui lòng thử lại!")
 		}
 		return err
 	}
+	return nil
+}
+
+func (sm *SessionManager) UpdateDraftUnsafe(sessionID string, sid, cid int, mark float64) error {
+	sm.mu.Lock()
+	tx, exists := sm.sessions[sessionID]
+	sm.mu.Unlock()
+
+	if !exists {
+		return errors.New("Session expired or not found")
+	}
+
+	query := ` 
+	UPDATE ENROLLMENT WITH (ROWLOCK) SET mark = @p1 WHERE student_id = @p2 AND course_id = @p3`
+
+	_, err := tx.Exec(query, mark, sid, cid)
+	if err != nil {
+		if isLockTimeoutError(err) {
+			return errors.New("Hệ thống đang bận: Vui lòng đợi trong giây lát!")
+		}
+		if isDeadlockError(err) {
+			return errors.New("Đã xảy ra deadlock: Vui lòng thử lại!")
+		}
+		return err
+	}
+
 	return nil
 }
 
@@ -82,19 +112,21 @@ func (sm *SessionManager) CloseSession(sessionID string, action string) error {
 	return tx.Rollback()
 }
 
-func isLockTimeoutError(err error) bool {
+func isMSSQLError(err error, number int32) bool {
 	if err == nil {
 		return false
 	}
-
 	var mssqlErr mssql.Error
 	if errors.As(err, &mssqlErr) {
-		return mssqlErr.Number == 1222
+		return mssqlErr.Number == number
 	}
+	return strings.Contains(err.Error(), fmt.Sprintf("%d", number))
+}
 
-	if strings.Contains(err.Error(), "1222") || strings.Contains(err.Error(), "Lock request time out") {
-		return true
-	}
+func isDeadlockError(err error) bool {
+	return isMSSQLError(err, 1205)
+}
 
-	return false
+func isLockTimeoutError(err error) bool {
+	return isMSSQLError(err, 1222) || strings.Contains(err.Error(), "Lock request time out")
 }

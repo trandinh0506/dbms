@@ -51,6 +51,7 @@ func SetupRouter(ctrl *controller.Controller) *gin.Engine {
 			instructor.GET("/course-students/:id", ctrl.GetStudentsByCourse)
 			instructor.POST("/start-session", ctrl.StartSession)
 			instructor.PUT("/update-mark-in-session", ctrl.UpdateMarkInSession)
+			instructor.PUT("/update-mark-in-session-unsafe", ctrl.UpdateMarkInSessionUnsafe)
 			instructor.POST("/commit", ctrl.CommitSession)
 			instructor.POST("/rollback", ctrl.RollbackSession)
 			instructor.POST("/final-report", ctrl.FinalizeReport)

@@ -152,6 +152,27 @@ func (ctrl *Controller) UpdateMarkInSession(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "Cập nhật thành công"})
 }
 
+func (ctrl *Controller) UpdateMarkInSessionUnsafe(c *gin.Context) {
+	var req struct {
+		SessionID string  `json:"session_id" binding:"required"`
+		SID       int     `json:"sid" binding:"required"`
+		CID       int     `json:"cid" binding:"required"`
+		Mark      float64 `json:"mark" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Thiếu thông tin"})
+		return
+	}
+
+	err := ctrl.Svc.Ssm.UpdateDraftUnsafe(req.SessionID, req.SID, req.CID, req.Mark)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "Cập nhật thành công"})
+}
+
 func (ctrl *Controller) CommitSession(c *gin.Context) {
 	sessionID := c.Query("session_id")
 	err := ctrl.Svc.Ssm.CloseSession(sessionID, "COMMIT")
